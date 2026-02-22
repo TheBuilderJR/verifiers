@@ -247,6 +247,32 @@ fn draw_setup(frame: &mut Frame, app: &App) {
 fn draw_running(frame: &mut Frame, app: &App) {
     let area = frame.area();
 
+    // Build help spans early so we can calculate dynamic height
+    let mut help_spans = vec![
+        Span::styled(" q: Quit ", Style::default().fg(Color::Red)),
+        Span::raw(" | "),
+        Span::styled(" Tab: Switch focus ", Style::default().fg(Color::Cyan)),
+        Span::raw(" | "),
+        Span::styled(
+            " Up/Down: Scroll ",
+            Style::default().fg(Color::Cyan),
+        ),
+    ];
+    if app.screen == Screen::Done {
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Ctrl+N: New prompt ",
+            Style::default().fg(Color::Green),
+        ));
+    }
+
+    let help_text_width: usize = help_spans.iter().map(|s| s.content.width()).sum();
+    let help_bar_rows = if area.width > 0 {
+        ((help_text_width.max(1) + area.width as usize - 1) / area.width as usize) as u16
+    } else {
+        1
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -254,7 +280,7 @@ fn draw_running(frame: &mut Frame, app: &App) {
             Constraint::Length(app.verifier_statuses.len() as u16 + 2), // Verifier checklist
             Constraint::Percentage(40),              // Logs
             Constraint::Percentage(40),              // File contents
-            Constraint::Length(1),                   // Help bar
+            Constraint::Length(help_bar_rows),        // Help bar (dynamic)
         ])
         .split(area);
 
@@ -375,25 +401,8 @@ fn draw_running(frame: &mut Frame, app: &App) {
         .scroll((app.file_scroll, 0));
     frame.render_widget(file_para, chunks[3]);
 
-    // Help bar
-    let mut help_spans = vec![
-        Span::styled(" q: Quit ", Style::default().fg(Color::Red)),
-        Span::raw(" | "),
-        Span::styled(" Tab: Switch focus ", Style::default().fg(Color::Cyan)),
-        Span::raw(" | "),
-        Span::styled(
-            " Up/Down: Scroll ",
-            Style::default().fg(Color::Cyan),
-        ),
-    ];
-    if app.screen == Screen::Done {
-        help_spans.push(Span::raw(" | "));
-        help_spans.push(Span::styled(
-            " Ctrl+N: New prompt ",
-            Style::default().fg(Color::Green),
-        ));
-    }
+    // Render help bar
     let help = Line::from(help_spans);
-    let help_bar = Paragraph::new(help);
+    let help_bar = Paragraph::new(help).wrap(Wrap { trim: false });
     frame.render_widget(help_bar, chunks[4]);
 }
