@@ -6,6 +6,8 @@ use ratatui::{
     Frame,
 };
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::app::{App, Screen, ScrollFocus, SetupFocus, VerifierStatus};
 
 pub fn draw(frame: &mut Frame, app: &App) {
@@ -21,12 +23,12 @@ fn draw_setup(frame: &mut Frame, app: &App) {
     // Calculate dynamic heights for verifier input fields based on text wrapping
     let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
     let name_rows = if inner_width > 0 {
-        ((app.verifier_name_input.len() / inner_width) + 1) as u16
+        ((app.verifier_name_input.width() / inner_width) + 1) as u16
     } else {
         1
     };
     let vprompt_rows = if inner_width > 0 {
-        ((app.verifier_prompt_input.len() / inner_width) + 1) as u16
+        ((app.verifier_prompt_input.width() / inner_width) + 1) as u16
     } else {
         1
     };
@@ -184,11 +186,11 @@ fn draw_setup(frame: &mut Frame, app: &App) {
 
                 // Count rows from all lines except the last
                 for line in &lines[..lines.len().saturating_sub(1)] {
-                    y_offset += (line.len() / inner_width) + 1;
+                    y_offset += (line.width() / inner_width) + 1;
                 }
 
                 // Position within the last line
-                let last_line_len = lines.last().map_or(0, |l| l.len());
+                let last_line_len = lines.last().map_or(0, |l| l.width());
                 y_offset += last_line_len / inner_width;
                 let x_offset = last_line_len % inner_width;
 
@@ -200,7 +202,7 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         SetupFocus::VerifierName => {
             let iw = chunks[2].width.saturating_sub(2) as usize;
             if iw > 0 {
-                let len = app.verifier_name_input.len();
+                let len = app.verifier_name_input.width();
                 let x = chunks[2].x + 1 + (len % iw) as u16;
                 let y = chunks[2].y + 1 + (len / iw) as u16;
                 frame.set_cursor_position((x, y));
@@ -209,7 +211,7 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         SetupFocus::VerifierPrompt => {
             let iw = chunks[3].width.saturating_sub(2) as usize;
             if iw > 0 {
-                let len = app.verifier_prompt_input.len();
+                let len = app.verifier_prompt_input.width();
                 let x = chunks[3].x + 1 + (len % iw) as u16;
                 let y = chunks[3].y + 1 + (len / iw) as u16;
                 frame.set_cursor_position((x, y));
