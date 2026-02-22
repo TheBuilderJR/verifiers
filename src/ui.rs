@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
@@ -6,9 +8,128 @@ use ratatui::{
     Frame,
 };
 
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::{App, Screen, ScrollFocus, SetupFocus, VerifierStatus};
+
+/// Compute visual row widths produced by word-wrapping a single line (no newlines),
+/// matching ratatui's WordWrapper with trim=false.
+fn word_wrap_widths(line: &str, max_width: u16) -> Vec<u16> {
+    if max_width == 0 {
+        return vec![0];
+    }
+
+    let mut wrapped: Vec<u16> = Vec::new();
+    let mut line_width: u16 = 0;
+    let mut word_width: u16 = 0;
+    let mut whitespace_width: u16 = 0;
+    let mut non_ws_prev = false;
+    let mut pending_ws: VecDeque<u16> = VecDeque::new();
+    let mut has_pending_word = false;
+
+    for ch in line.chars() {
+        let is_ws = ch.is_whitespace();
+        let sym_w = UnicodeWidthChar::width(ch).unwrap_or(0) as u16;
+
+        if sym_w > max_width {
+            continue;
+        }
+
+        let word_found = non_ws_prev && is_ws;
+        let untrimmed_overflow =
+            line_width == 0 && (word_width + whitespace_width + sym_w > max_width);
+
+        // Commit pending whitespace + word to line
+        if word_found || untrimmed_overflow {
+            line_width += whitespace_width + word_width;
+            whitespace_width = 0;
+            word_width = 0;
+            pending_ws.clear();
+            has_pending_word = false;
+        }
+
+        let line_full = line_width >= max_width;
+        let pending_overflow =
+            sym_w > 0 && line_width + whitespace_width + word_width >= max_width;
+
+        if line_full || pending_overflow {
+            let mut remaining = max_width.saturating_sub(line_width);
+            wrapped.push(line_width);
+            line_width = 0;
+
+            // Remove whitespace that fits in the remaining space of the pushed line
+            while let Some(&w) = pending_ws.front() {
+                if w > remaining {
+                    break;
+                }
+                whitespace_width -= w;
+                remaining -= w;
+                pending_ws.pop_front();
+            }
+
+            // Skip first whitespace after a line break
+            if is_ws && pending_ws.is_empty() {
+                non_ws_prev = false;
+                continue;
+            }
+        }
+
+        if is_ws {
+            whitespace_width += sym_w;
+            pending_ws.push_back(sym_w);
+        } else {
+            word_width += sym_w;
+            has_pending_word = true;
+        }
+
+        non_ws_prev = !is_ws;
+    }
+
+    // Finalization (matches ratatui's process_input)
+    if line_width == 0 && !has_pending_word && !pending_ws.is_empty() {
+        wrapped.push(0);
+    }
+    let final_width = line_width + whitespace_width + word_width;
+    if final_width > 0 || has_pending_word {
+        wrapped.push(final_width);
+    }
+    if wrapped.is_empty() {
+        wrapped.push(0);
+    }
+
+    wrapped
+}
+
+/// Compute (x_offset, y_offset) cursor position at the end of text rendered with
+/// ratatui's Wrap { trim: false } word wrapping, matching the visual layout exactly.
+fn cursor_pos_wrapped(text: &str, max_width: u16) -> (u16, u16) {
+    if max_width == 0 {
+        return (0, 0);
+    }
+
+    let mut total_rows: u16 = 0;
+    let natural_lines: Vec<&str> = text.split('\n').collect();
+
+    for (i, natural_line) in natural_lines.iter().enumerate() {
+        let widths = word_wrap_widths(natural_line, max_width);
+        if i < natural_lines.len() - 1 {
+            total_rows += widths.len() as u16;
+        } else {
+            total_rows += widths.len().saturating_sub(1) as u16;
+            let last_width = widths.last().copied().unwrap_or(0);
+            return (last_width, total_rows);
+        }
+    }
+
+    (0, total_rows)
+}
+
+/// Count total visual rows after word-wrapping text with trim=false.
+fn wrapped_row_count(text: &str, max_width: u16) -> u16 {
+    text.split('\n')
+        .map(|line| word_wrap_widths(line, max_width).len() as u16)
+        .sum()
+}
 
 pub fn draw(frame: &mut Frame, app: &App) {
     match app.screen {
@@ -20,18 +141,10 @@ pub fn draw(frame: &mut Frame, app: &App) {
 fn draw_setup(frame: &mut Frame, app: &App) {
     let area = frame.area();
 
-    // Calculate dynamic heights for verifier input fields based on text wrapping
-    let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
-    let name_rows = if inner_width > 0 {
-        ((app.verifier_name_input.width() / inner_width) + 1) as u16
-    } else {
-        1
-    };
-    let vprompt_rows = if inner_width > 0 {
-        ((app.verifier_prompt_input.width() / inner_width) + 1) as u16
-    } else {
-        1
-    };
+    // Calculate dynamic heights for verifier input fields based on word wrapping
+    let inner_width = area.width.saturating_sub(2); // subtract borders
+    let name_rows = wrapped_row_count(&app.verifier_name_input, inner_width);
+    let vprompt_rows = wrapped_row_count(&app.verifier_prompt_input, inner_width);
 
     // Build help spans early so we can calculate dynamic height
     let can_start = app.can_start();
@@ -196,45 +309,32 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         .wrap(Wrap { trim: false });
     frame.render_widget(help_bar, chunks[5]);
 
-    // Show cursor in the focused input
+    // Show cursor in the focused input, using word-wrap-aware positioning
     match app.setup_focus {
         SetupFocus::Prompt => {
-            // Position cursor at end of prompt input, accounting for newlines and wrapping
-            let inner_width = chunks[1].width.saturating_sub(2) as usize;
-            if inner_width > 0 {
-                let lines: Vec<&str> = app.prompt_input.split('\n').collect();
-                let mut y_offset: usize = 0;
-
-                // Count rows from all lines except the last
-                for line in &lines[..lines.len().saturating_sub(1)] {
-                    y_offset += (line.width() / inner_width) + 1;
-                }
-
-                // Position within the last line
-                let last_line_len = lines.last().map_or(0, |l| l.width());
-                y_offset += last_line_len / inner_width;
-                let x_offset = last_line_len % inner_width;
-
-                let x = chunks[1].x + 1 + x_offset as u16;
-                let y = chunks[1].y + 1 + y_offset as u16;
+            let iw = chunks[1].width.saturating_sub(2);
+            if iw > 0 {
+                let (x_off, y_off) = cursor_pos_wrapped(&app.prompt_input, iw);
+                let x = chunks[1].x + 1 + x_off;
+                let y = chunks[1].y + 1 + y_off;
                 frame.set_cursor_position((x, y));
             }
         }
         SetupFocus::VerifierName => {
-            let iw = chunks[2].width.saturating_sub(2) as usize;
+            let iw = chunks[2].width.saturating_sub(2);
             if iw > 0 {
-                let len = app.verifier_name_input.width();
-                let x = chunks[2].x + 1 + (len % iw) as u16;
-                let y = chunks[2].y + 1 + (len / iw) as u16;
+                let (x_off, y_off) = cursor_pos_wrapped(&app.verifier_name_input, iw);
+                let x = chunks[2].x + 1 + x_off;
+                let y = chunks[2].y + 1 + y_off;
                 frame.set_cursor_position((x, y));
             }
         }
         SetupFocus::VerifierPrompt => {
-            let iw = chunks[3].width.saturating_sub(2) as usize;
+            let iw = chunks[3].width.saturating_sub(2);
             if iw > 0 {
-                let len = app.verifier_prompt_input.width();
-                let x = chunks[3].x + 1 + (len % iw) as u16;
-                let y = chunks[3].y + 1 + (len / iw) as u16;
+                let (x_off, y_off) = cursor_pos_wrapped(&app.verifier_prompt_input, iw);
+                let x = chunks[3].x + 1 + x_off;
+                let y = chunks[3].y + 1 + y_off;
                 frame.set_cursor_position((x, y));
             }
         }
