@@ -33,6 +33,62 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         1
     };
 
+    // Build help spans early so we can calculate dynamic height
+    let can_start = app.can_start();
+    let start_hint = if can_start {
+        Span::styled(" Ctrl+S: Start ", Style::default().fg(Color::Green))
+    } else {
+        Span::styled(
+            " Ctrl+S: Start (need prompt + enabled verifier) ",
+            Style::default().fg(Color::DarkGray),
+        )
+    };
+    let mut help_spans = vec![
+        Span::styled(" Tab: Next field ", Style::default().fg(Color::Cyan)),
+        Span::raw(" | "),
+    ];
+    if app.setup_focus == SetupFocus::VerifierList {
+        help_spans.push(Span::styled(
+            " Up/Down: Select ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Space: Toggle ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Ctrl+D: Remove ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+    } else {
+        help_spans.push(Span::styled(
+            " Enter: Add verifier ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+    }
+    help_spans.push(start_hint);
+    if !app.prompt_history.is_empty() && app.setup_focus == SetupFocus::Prompt {
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Ctrl+P/N: History ",
+            Style::default().fg(Color::Cyan),
+        ));
+    }
+    help_spans.push(Span::raw(" | "));
+    help_spans.push(Span::styled(" Ctrl+C/q: Quit ", Style::default().fg(Color::Red)));
+
+    // Calculate help bar height: text rows + 1 for top border
+    let help_text_width: usize = help_spans.iter().map(|s| s.content.width()).sum();
+    let help_bar_rows = if area.width > 0 {
+        ((help_text_width.max(1) + area.width as usize - 1) / area.width as usize) as u16
+    } else {
+        1
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -41,7 +97,7 @@ fn draw_setup(frame: &mut Frame, app: &App) {
             Constraint::Length(name_rows + 2),    // Verifier name input (dynamic)
             Constraint::Length(vprompt_rows + 2), // Verifier prompt input (dynamic)
             Constraint::Min(4),                  // Verifier list
-            Constraint::Length(3),               // Help bar
+            Constraint::Length(help_bar_rows + 1), // Help bar (dynamic + top border)
         ])
         .split(area);
 
@@ -103,12 +159,14 @@ fn draw_setup(frame: &mut Frame, app: &App) {
     } else {
         Style::default().fg(Color::White)
     };
+    let enabled_count = app.verifiers.iter().filter(|v| v.enabled).count();
     let verifier_items: Vec<ListItem> = app
         .verifiers
         .iter()
         .enumerate()
         .map(|(i, v)| {
-            let text = format!("  {}. {} — {}", i + 1, v.name, v.prompt);
+            let checkbox = if v.enabled { "[x]" } else { "[ ]" };
+            let text = format!("  {} {}. {} — {}", checkbox, i + 1, v.name, v.prompt);
             if list_focused && i == app.selected_verifier {
                 ListItem::new(text).style(
                     Style::default()
@@ -116,6 +174,8 @@ fn draw_setup(frame: &mut Frame, app: &App) {
                         .fg(Color::White)
                         .add_modifier(Modifier::BOLD),
                 )
+            } else if !v.enabled {
+                ListItem::new(text).style(Style::default().fg(Color::DarkGray))
             } else {
                 ListItem::new(text)
             }
@@ -123,56 +183,17 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         .collect();
     let verifier_list = List::new(verifier_items).block(
         Block::default()
-            .title(format!(" Verifiers ({}) ", app.verifiers.len()))
+            .title(format!(" Verifiers ({}/{} enabled) ", enabled_count, app.verifiers.len()))
             .borders(Borders::ALL)
             .border_style(list_border_style),
     );
     frame.render_widget(verifier_list, chunks[4]);
 
-    // Help bar
-    let can_start = app.can_start();
-    let start_hint = if can_start {
-        Span::styled(" Ctrl+S: Start ", Style::default().fg(Color::Green))
-    } else {
-        Span::styled(
-            " Ctrl+S: Start (need prompt + verifier) ",
-            Style::default().fg(Color::DarkGray),
-        )
-    };
-    let mut help_spans = vec![
-        Span::styled(" Tab: Next field ", Style::default().fg(Color::Cyan)),
-        Span::raw(" | "),
-    ];
-    if app.setup_focus == SetupFocus::VerifierList {
-        help_spans.push(Span::styled(
-            " Up/Down: Select ",
-            Style::default().fg(Color::Cyan),
-        ));
-        help_spans.push(Span::raw(" | "));
-        help_spans.push(Span::styled(
-            " Ctrl+D: Remove ",
-            Style::default().fg(Color::Cyan),
-        ));
-        help_spans.push(Span::raw(" | "));
-    } else {
-        help_spans.push(Span::styled(
-            " Enter: Add verifier ",
-            Style::default().fg(Color::Cyan),
-        ));
-        help_spans.push(Span::raw(" | "));
-    }
-    help_spans.push(start_hint);
-    if !app.prompt_history.is_empty() && app.setup_focus == SetupFocus::Prompt {
-        help_spans.push(Span::raw(" | "));
-        help_spans.push(Span::styled(
-            " Ctrl+P/N: History ",
-            Style::default().fg(Color::Cyan),
-        ));
-    }
-    help_spans.push(Span::raw(" | "));
-    help_spans.push(Span::styled(" Ctrl+C/q: Quit ", Style::default().fg(Color::Red)));
+    // Render help bar
     let help = Line::from(help_spans);
-    let help_bar = Paragraph::new(help).block(Block::default().borders(Borders::TOP));
+    let help_bar = Paragraph::new(help)
+        .block(Block::default().borders(Borders::TOP))
+        .wrap(Wrap { trim: false });
     frame.render_widget(help_bar, chunks[5]);
 
     // Show cursor in the focused input

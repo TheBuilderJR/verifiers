@@ -113,7 +113,7 @@ async fn run_app(
                                     save_prompt_history(&app.prompt_history);
                                     // Create the shared file
                                     let verifier_names: Vec<String> =
-                                        app.verifiers.iter().map(|v| v.name.clone()).collect();
+                                        app.verifiers.iter().filter(|v| v.enabled).map(|v| v.name.clone()).collect();
                                     let fm = FileManager::create(&verifier_names, &app.prompt_input)?;
                                     let file_path = fm.path.display().to_string();
                                     app.start_running(fm.clone());
@@ -124,7 +124,7 @@ async fn run_app(
                                     let (sender, receiver) = mpsc::unbounded_channel();
                                     rx = Some(receiver);
                                     let prompt = app.prompt_input.clone();
-                                    let verifiers = app.verifiers.clone();
+                                    let verifiers: Vec<_> = app.verifiers.iter().filter(|v| v.enabled).cloned().collect();
                                     tokio::spawn(async move {
                                         runner::run_loop(fm, prompt, verifiers, sender).await;
                                     });
@@ -139,13 +139,10 @@ async fn run_app(
                                     app.selected_verifier = (app.selected_verifier + 1).min(app.verifiers.len() - 1);
                                 }
                             }
-                            (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.setup_focus == SetupFocus::VerifierList => {
-                                app.remove_selected_verifier();
-                                if app.verifiers.is_empty() {
-                                    app.setup_focus = SetupFocus::VerifierPrompt;
-                                }
+                            (KeyCode::Char(' '), _) if app.setup_focus == SetupFocus::VerifierList => {
+                                app.toggle_selected_verifier();
                             }
-                            (KeyCode::Backspace, _) if app.setup_focus == SetupFocus::VerifierList => {
+                            (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.setup_focus == SetupFocus::VerifierList => {
                                 app.remove_selected_verifier();
                                 if app.verifiers.is_empty() {
                                     app.setup_focus = SetupFocus::VerifierPrompt;

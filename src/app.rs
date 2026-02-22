@@ -2,11 +2,17 @@ use crate::file_manager::FileManager;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+fn default_true() -> bool {
+    true
+}
+
 /// A verifier definition: a name and a prompt that tells Claude how to verify.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Verifier {
     pub name: String,
     pub prompt: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
 }
 
 /// Status of each verifier during a run.
@@ -114,7 +120,7 @@ impl App {
         let name = self.verifier_name_input.trim().to_string();
         let prompt = self.verifier_prompt_input.trim().to_string();
         if !name.is_empty() && !prompt.is_empty() {
-            self.verifiers.push(Verifier { name, prompt });
+            self.verifiers.push(Verifier { name, prompt, enabled: true });
             self.verifier_name_input.clear();
             self.verifier_prompt_input.clear();
             self.setup_focus = SetupFocus::VerifierName;
@@ -130,8 +136,14 @@ impl App {
         }
     }
 
+    pub fn toggle_selected_verifier(&mut self) {
+        if let Some(v) = self.verifiers.get_mut(self.selected_verifier) {
+            v.enabled = !v.enabled;
+        }
+    }
+
     pub fn can_start(&self) -> bool {
-        !self.prompt_input.trim().is_empty() && !self.verifiers.is_empty()
+        !self.prompt_input.trim().is_empty() && self.verifiers.iter().any(|v| v.enabled)
     }
 
     pub fn start_running(&mut self, file_manager: FileManager) {
@@ -140,6 +152,7 @@ impl App {
         self.verifier_statuses = self
             .verifiers
             .iter()
+            .filter(|v| v.enabled)
             .map(|v| (v.name.clone(), VerifierStatus::Pending))
             .collect();
     }
