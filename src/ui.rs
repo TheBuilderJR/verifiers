@@ -18,15 +18,28 @@ pub fn draw(frame: &mut Frame, app: &App) {
 fn draw_setup(frame: &mut Frame, app: &App) {
     let area = frame.area();
 
+    // Calculate dynamic heights for verifier input fields based on text wrapping
+    let inner_width = area.width.saturating_sub(2) as usize; // subtract borders
+    let name_rows = if inner_width > 0 {
+        ((app.verifier_name_input.len() / inner_width) + 1) as u16
+    } else {
+        1
+    };
+    let vprompt_rows = if inner_width > 0 {
+        ((app.verifier_prompt_input.len() / inner_width) + 1) as u16
+    } else {
+        1
+    };
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Title
-            Constraint::Min(6),    // Prompt input
-            Constraint::Length(3), // Verifier name input
-            Constraint::Length(3), // Verifier prompt input
-            Constraint::Min(4),    // Verifier list
-            Constraint::Length(3), // Help bar
+            Constraint::Length(3),                // Title
+            Constraint::Min(6),                  // Prompt input
+            Constraint::Length(name_rows + 2),    // Verifier name input (dynamic)
+            Constraint::Length(vprompt_rows + 2), // Verifier prompt input (dynamic)
+            Constraint::Min(4),                  // Verifier list
+            Constraint::Length(3),               // Help bar
         ])
         .split(area);
 
@@ -61,7 +74,9 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         .title(" Verifier Name ")
         .borders(Borders::ALL)
         .border_style(name_style);
-    let name_text = Paragraph::new(app.verifier_name_input.as_str()).block(name_block);
+    let name_text = Paragraph::new(app.verifier_name_input.as_str())
+        .block(name_block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(name_text, chunks[2]);
 
     // Verifier prompt input
@@ -74,24 +89,27 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         .title(" Verifier Prompt ")
         .borders(Borders::ALL)
         .border_style(vprompt_style);
-    let vprompt_text =
-        Paragraph::new(app.verifier_prompt_input.as_str()).block(vprompt_block);
+    let vprompt_text = Paragraph::new(app.verifier_prompt_input.as_str())
+        .block(vprompt_block)
+        .wrap(Wrap { trim: false });
     frame.render_widget(vprompt_text, chunks[3]);
 
     // Verifier list
-    let items: Vec<ListItem> = app
+    let verifier_lines: Vec<Line> = app
         .verifiers
         .iter()
         .enumerate()
         .map(|(i, v)| {
-            ListItem::new(format!("  {}. {} — {}", i + 1, v.name, v.prompt))
+            Line::from(format!("  {}. {} — {}", i + 1, v.name, v.prompt))
         })
         .collect();
-    let verifier_list = List::new(items).block(
-        Block::default()
-            .title(format!(" Verifiers ({}) ", app.verifiers.len()))
-            .borders(Borders::ALL),
-    );
+    let verifier_list = Paragraph::new(verifier_lines)
+        .block(
+            Block::default()
+                .title(format!(" Verifiers ({}) ", app.verifiers.len()))
+                .borders(Borders::ALL),
+        )
+        .wrap(Wrap { trim: false });
     frame.render_widget(verifier_list, chunks[4]);
 
     // Help bar
@@ -143,14 +161,22 @@ fn draw_setup(frame: &mut Frame, app: &App) {
             }
         }
         SetupFocus::VerifierName => {
-            let x = chunks[2].x + 1 + app.verifier_name_input.len() as u16;
-            let y = chunks[2].y + 1;
-            frame.set_cursor_position((x, y));
+            let iw = chunks[2].width.saturating_sub(2) as usize;
+            if iw > 0 {
+                let len = app.verifier_name_input.len();
+                let x = chunks[2].x + 1 + (len % iw) as u16;
+                let y = chunks[2].y + 1 + (len / iw) as u16;
+                frame.set_cursor_position((x, y));
+            }
         }
         SetupFocus::VerifierPrompt => {
-            let x = chunks[3].x + 1 + app.verifier_prompt_input.len() as u16;
-            let y = chunks[3].y + 1;
-            frame.set_cursor_position((x, y));
+            let iw = chunks[3].width.saturating_sub(2) as usize;
+            if iw > 0 {
+                let len = app.verifier_prompt_input.len();
+                let x = chunks[3].x + 1 + (len % iw) as u16;
+                let y = chunks[3].y + 1 + (len / iw) as u16;
+                frame.set_cursor_position((x, y));
+            }
         }
     }
 }
