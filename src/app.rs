@@ -46,6 +46,7 @@ pub enum SetupFocus {
     Prompt,
     VerifierName,
     VerifierPrompt,
+    VerifierList,
 }
 
 /// The full application state.
@@ -58,6 +59,7 @@ pub struct App {
     pub verifier_prompt_input: String,
     pub verifiers: Vec<Verifier>,
     pub setup_focus: SetupFocus,
+    pub selected_verifier: usize,
 
     // Prompt history
     pub prompt_history: Vec<String>,
@@ -92,6 +94,7 @@ impl App {
             verifier_prompt_input: String::new(),
             verifiers: Vec::new(),
             setup_focus: SetupFocus::Prompt,
+            selected_verifier: 0,
             prompt_history: Vec::new(),
             history_index: None,
             history_draft: String::new(),
@@ -118,8 +121,13 @@ impl App {
         }
     }
 
-    pub fn remove_last_verifier(&mut self) {
-        self.verifiers.pop();
+    pub fn remove_selected_verifier(&mut self) {
+        if !self.verifiers.is_empty() {
+            self.verifiers.remove(self.selected_verifier);
+            if self.selected_verifier >= self.verifiers.len() && self.selected_verifier > 0 {
+                self.selected_verifier -= 1;
+            }
+        }
     }
 
     pub fn can_start(&self) -> bool {

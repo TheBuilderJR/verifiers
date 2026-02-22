@@ -95,21 +95,36 @@ fn draw_setup(frame: &mut Frame, app: &App) {
     frame.render_widget(vprompt_text, chunks[3]);
 
     // Verifier list
-    let verifier_lines: Vec<Line> = app
+    let list_focused = app.setup_focus == SetupFocus::VerifierList;
+    let list_border_style = if list_focused {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    let verifier_items: Vec<ListItem> = app
         .verifiers
         .iter()
         .enumerate()
         .map(|(i, v)| {
-            Line::from(format!("  {}. {} — {}", i + 1, v.name, v.prompt))
+            let text = format!("  {}. {} — {}", i + 1, v.name, v.prompt);
+            if list_focused && i == app.selected_verifier {
+                ListItem::new(text).style(
+                    Style::default()
+                        .bg(Color::DarkGray)
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                ListItem::new(text)
+            }
         })
         .collect();
-    let verifier_list = Paragraph::new(verifier_lines)
-        .block(
-            Block::default()
-                .title(format!(" Verifiers ({}) ", app.verifiers.len()))
-                .borders(Borders::ALL),
-        )
-        .wrap(Wrap { trim: false });
+    let verifier_list = List::new(verifier_items).block(
+        Block::default()
+            .title(format!(" Verifiers ({}) ", app.verifiers.len()))
+            .borders(Borders::ALL)
+            .border_style(list_border_style),
+    );
     frame.render_widget(verifier_list, chunks[4]);
 
     // Help bar
@@ -125,12 +140,26 @@ fn draw_setup(frame: &mut Frame, app: &App) {
     let mut help_spans = vec![
         Span::styled(" Tab: Next field ", Style::default().fg(Color::Cyan)),
         Span::raw(" | "),
-        Span::styled(" Enter: Add verifier ", Style::default().fg(Color::Cyan)),
-        Span::raw(" | "),
-        Span::styled(" Ctrl+D: Remove last verifier ", Style::default().fg(Color::Cyan)),
-        Span::raw(" | "),
-        start_hint,
     ];
+    if app.setup_focus == SetupFocus::VerifierList {
+        help_spans.push(Span::styled(
+            " Up/Down: Select ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Ctrl+D: Remove ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+    } else {
+        help_spans.push(Span::styled(
+            " Enter: Add verifier ",
+            Style::default().fg(Color::Cyan),
+        ));
+        help_spans.push(Span::raw(" | "));
+    }
+    help_spans.push(start_hint);
     if !app.prompt_history.is_empty() && app.setup_focus == SetupFocus::Prompt {
         help_spans.push(Span::raw(" | "));
         help_spans.push(Span::styled(
@@ -185,6 +214,9 @@ fn draw_setup(frame: &mut Frame, app: &App) {
                 let y = chunks[3].y + 1 + (len / iw) as u16;
                 frame.set_cursor_position((x, y));
             }
+        }
+        SetupFocus::VerifierList => {
+            // No text cursor in the list view
         }
     }
 }

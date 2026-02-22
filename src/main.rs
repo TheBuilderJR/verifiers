@@ -73,11 +73,32 @@ async fn run_app(
                                 app.should_quit = true;
                             }
                             // Tab to cycle focus
-                            (KeyCode::Tab, _) | (KeyCode::BackTab, _) => {
+                            (KeyCode::Tab, _) => {
                                 app.setup_focus = match app.setup_focus {
                                     SetupFocus::Prompt => SetupFocus::VerifierName,
                                     SetupFocus::VerifierName => SetupFocus::VerifierPrompt,
-                                    SetupFocus::VerifierPrompt => SetupFocus::Prompt,
+                                    SetupFocus::VerifierPrompt => {
+                                        if !app.verifiers.is_empty() {
+                                            SetupFocus::VerifierList
+                                        } else {
+                                            SetupFocus::Prompt
+                                        }
+                                    }
+                                    SetupFocus::VerifierList => SetupFocus::Prompt,
+                                };
+                            }
+                            (KeyCode::BackTab, _) => {
+                                app.setup_focus = match app.setup_focus {
+                                    SetupFocus::Prompt => {
+                                        if !app.verifiers.is_empty() {
+                                            SetupFocus::VerifierList
+                                        } else {
+                                            SetupFocus::VerifierPrompt
+                                        }
+                                    }
+                                    SetupFocus::VerifierName => SetupFocus::Prompt,
+                                    SetupFocus::VerifierPrompt => SetupFocus::VerifierName,
+                                    SetupFocus::VerifierList => SetupFocus::VerifierPrompt,
                                 };
                             }
                             // Enter: add verifier (when on verifier prompt field)
@@ -109,9 +130,26 @@ async fn run_app(
                                     });
                                 }
                             }
-                            // Ctrl+D: remove last verifier
-                            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                                app.remove_last_verifier();
+                            // VerifierList: Up/Down to navigate, Ctrl+D/Backspace to remove
+                            (KeyCode::Up, _) if app.setup_focus == SetupFocus::VerifierList => {
+                                app.selected_verifier = app.selected_verifier.saturating_sub(1);
+                            }
+                            (KeyCode::Down, _) if app.setup_focus == SetupFocus::VerifierList => {
+                                if !app.verifiers.is_empty() {
+                                    app.selected_verifier = (app.selected_verifier + 1).min(app.verifiers.len() - 1);
+                                }
+                            }
+                            (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.setup_focus == SetupFocus::VerifierList => {
+                                app.remove_selected_verifier();
+                                if app.verifiers.is_empty() {
+                                    app.setup_focus = SetupFocus::VerifierPrompt;
+                                }
+                            }
+                            (KeyCode::Backspace, _) if app.setup_focus == SetupFocus::VerifierList => {
+                                app.remove_selected_verifier();
+                                if app.verifiers.is_empty() {
+                                    app.setup_focus = SetupFocus::VerifierPrompt;
+                                }
                             }
                             // Ctrl+P: previous prompt in history
                             (KeyCode::Char('p'), KeyModifiers::CONTROL)
@@ -145,7 +183,7 @@ async fn run_app(
                                     app.prompt_input = app.history_draft.clone();
                                 }
                             }
-                            // Backspace
+                            // Backspace (text fields only; VerifierList handled above)
                             (KeyCode::Backspace, _) => match app.setup_focus {
                                 SetupFocus::Prompt => {
                                     app.prompt_input.pop();
@@ -157,8 +195,9 @@ async fn run_app(
                                 SetupFocus::VerifierPrompt => {
                                     app.verifier_prompt_input.pop();
                                 }
+                                SetupFocus::VerifierList => {}
                             },
-                            // Regular character input
+                            // Regular character input (no-op in VerifierList)
                             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                                 match app.setup_focus {
                                     SetupFocus::Prompt => {
@@ -169,6 +208,7 @@ async fn run_app(
                                     SetupFocus::VerifierPrompt => {
                                         app.verifier_prompt_input.push(c)
                                     }
+                                    SetupFocus::VerifierList => {}
                                 }
                             }
                             // Enter for newline in prompt field
