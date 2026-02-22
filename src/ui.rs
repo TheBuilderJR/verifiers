@@ -261,6 +261,11 @@ fn draw_running(frame: &mut Frame, app: &App) {
     if app.screen == Screen::Done {
         help_spans.push(Span::raw(" | "));
         help_spans.push(Span::styled(
+            " Ctrl+E: Edit prompt ",
+            Style::default().fg(Color::Green),
+        ));
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
             " Ctrl+N: New prompt ",
             Style::default().fg(Color::Green),
         ));

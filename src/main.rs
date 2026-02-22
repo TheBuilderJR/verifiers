@@ -227,6 +227,12 @@ async fn run_app(
                                 app.reset_for_new_run();
                                 rx = None;
                             }
+                            (KeyCode::Char('e'), KeyModifiers::CONTROL)
+                                if app.screen == Screen::Done =>
+                            {
+                                app.edit_and_rerun();
+                                rx = None;
+                            }
                             (KeyCode::Tab | KeyCode::BackTab, _) => {
                                 app.scroll_focus = match app.scroll_focus {
                                     ScrollFocus::Log => ScrollFocus::File,

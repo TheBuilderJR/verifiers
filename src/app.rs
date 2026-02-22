@@ -157,6 +157,23 @@ impl App {
             .collect();
     }
 
+    pub fn edit_and_rerun(&mut self) {
+        self.screen = Screen::Setup;
+        self.setup_focus = SetupFocus::Prompt;
+        self.verifier_name_input.clear();
+        self.verifier_prompt_input.clear();
+        self.history_index = None;
+        self.history_draft.clear();
+        self.verifier_statuses.clear();
+        self.logs.clear();
+        self.file_contents.clear();
+        self.iteration = 0;
+        self.file_manager = None;
+        self.log_scroll = 0;
+        self.file_scroll = 0;
+        self.scroll_focus = ScrollFocus::Log;
+    }
+
     pub fn reset_for_new_run(&mut self) {
         self.screen = Screen::Setup;
         self.prompt_input.clear();
