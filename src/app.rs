@@ -59,6 +59,11 @@ pub struct App {
     pub verifiers: Vec<Verifier>,
     pub setup_focus: SetupFocus,
 
+    // Prompt history
+    pub prompt_history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub history_draft: String,
+
     // Running state
     pub verifier_statuses: Vec<(String, VerifierStatus)>,
     pub logs: Vec<String>,
@@ -87,6 +92,9 @@ impl App {
             verifier_prompt_input: String::new(),
             verifiers: Vec::new(),
             setup_focus: SetupFocus::Prompt,
+            prompt_history: Vec::new(),
+            history_index: None,
+            history_draft: String::new(),
             verifier_statuses: Vec::new(),
             logs: Vec::new(),
             file_contents: String::new(),
@@ -134,6 +142,8 @@ impl App {
         self.verifier_name_input.clear();
         self.verifier_prompt_input.clear();
         self.setup_focus = SetupFocus::Prompt;
+        self.history_index = None;
+        self.history_draft.clear();
         self.verifier_statuses.clear();
         self.logs.clear();
         self.file_contents.clear();
@@ -207,4 +217,47 @@ pub fn load_verifiers() -> Vec<Verifier> {
         .ok()
         .and_then(|contents| serde_json::from_str(&contents).ok())
         .unwrap_or_default()
+}
+
+const MAX_PROMPT_HISTORY: usize = 50;
+
+fn prompt_history_path() -> PathBuf {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("verifiers");
+    config_dir.join("prompt_history.json")
+}
+
+pub fn save_prompt_history(history: &[String]) {
+    let path = prompt_history_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(history) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+pub fn load_prompt_history() -> Vec<String> {
+    let path = prompt_history_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default()
+}
+
+/// Add a prompt to history, deduplicating and capping at MAX_PROMPT_HISTORY.
+pub fn add_to_prompt_history(history: &mut Vec<String>, prompt: &str) {
+    let trimmed = prompt.trim().to_string();
+    if trimmed.is_empty() {
+        return;
+    }
+    // Remove duplicate if it exists
+    history.retain(|p| p != &trimmed);
+    history.push(trimmed);
+    // Cap at max
+    if history.len() > MAX_PROMPT_HISTORY {
+        let excess = history.len() - MAX_PROMPT_HISTORY;
+        history.drain(..excess);
+    }
 }

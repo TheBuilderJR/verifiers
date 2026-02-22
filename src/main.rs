@@ -3,7 +3,7 @@ mod file_manager;
 mod runner;
 mod ui;
 
-use app::{App, Screen, ScrollFocus, SetupFocus, load_verifiers, save_verifiers};
+use app::{App, Screen, ScrollFocus, SetupFocus, add_to_prompt_history, load_prompt_history, load_verifiers, save_prompt_history, save_verifiers};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -46,6 +46,7 @@ async fn run_app(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
     app.verifiers = load_verifiers();
+    app.prompt_history = load_prompt_history();
     let mut rx: Option<mpsc::UnboundedReceiver<app::RunnerMessage>> = None;
 
     loop {
@@ -87,6 +88,8 @@ async fn run_app(
                             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
                                 if app.can_start() {
                                     save_verifiers(&app.verifiers);
+                                    add_to_prompt_history(&mut app.prompt_history, &app.prompt_input);
+                                    save_prompt_history(&app.prompt_history);
                                     // Create the shared file
                                     let verifier_names: Vec<String> =
                                         app.verifiers.iter().map(|v| v.name.clone()).collect();
@@ -110,10 +113,43 @@ async fn run_app(
                             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                                 app.remove_last_verifier();
                             }
+                            // Ctrl+P: previous prompt in history
+                            (KeyCode::Char('p'), KeyModifiers::CONTROL)
+                                if app.setup_focus == SetupFocus::Prompt
+                                    && !app.prompt_history.is_empty() =>
+                            {
+                                let new_index = match app.history_index {
+                                    None => {
+                                        // Starting to browse: save current input as draft
+                                        app.history_draft = app.prompt_input.clone();
+                                        app.prompt_history.len() - 1
+                                    }
+                                    Some(0) => 0, // Already at oldest
+                                    Some(i) => i - 1,
+                                };
+                                app.history_index = Some(new_index);
+                                app.prompt_input = app.prompt_history[new_index].clone();
+                            }
+                            // Ctrl+N: next prompt in history
+                            (KeyCode::Char('n'), KeyModifiers::CONTROL)
+                                if app.setup_focus == SetupFocus::Prompt
+                                    && app.history_index.is_some() =>
+                            {
+                                let i = app.history_index.unwrap();
+                                if i + 1 < app.prompt_history.len() {
+                                    app.history_index = Some(i + 1);
+                                    app.prompt_input = app.prompt_history[i + 1].clone();
+                                } else {
+                                    // Past newest: restore draft
+                                    app.history_index = None;
+                                    app.prompt_input = app.history_draft.clone();
+                                }
+                            }
                             // Backspace
                             (KeyCode::Backspace, _) => match app.setup_focus {
                                 SetupFocus::Prompt => {
                                     app.prompt_input.pop();
+                                    app.history_index = None;
                                 }
                                 SetupFocus::VerifierName => {
                                     app.verifier_name_input.pop();
@@ -125,7 +161,10 @@ async fn run_app(
                             // Regular character input
                             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                                 match app.setup_focus {
-                                    SetupFocus::Prompt => app.prompt_input.push(c),
+                                    SetupFocus::Prompt => {
+                                        app.prompt_input.push(c);
+                                        app.history_index = None;
+                                    }
                                     SetupFocus::VerifierName => app.verifier_name_input.push(c),
                                     SetupFocus::VerifierPrompt => {
                                         app.verifier_prompt_input.push(c)
@@ -135,6 +174,7 @@ async fn run_app(
                             // Enter for newline in prompt field
                             (KeyCode::Enter, _) if app.setup_focus == SetupFocus::Prompt => {
                                 app.prompt_input.push('\n');
+                                app.history_index = None;
                             }
                             _ => {}
                         }

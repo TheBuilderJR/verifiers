@@ -122,7 +122,7 @@ fn draw_setup(frame: &mut Frame, app: &App) {
             Style::default().fg(Color::DarkGray),
         )
     };
-    let help = Line::from(vec![
+    let mut help_spans = vec![
         Span::styled(" Tab: Next field ", Style::default().fg(Color::Cyan)),
         Span::raw(" | "),
         Span::styled(" Enter: Add verifier ", Style::default().fg(Color::Cyan)),
@@ -130,9 +130,17 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         Span::styled(" Ctrl+D: Remove last verifier ", Style::default().fg(Color::Cyan)),
         Span::raw(" | "),
         start_hint,
-        Span::raw(" | "),
-        Span::styled(" Ctrl+C/q: Quit ", Style::default().fg(Color::Red)),
-    ]);
+    ];
+    if !app.prompt_history.is_empty() && app.setup_focus == SetupFocus::Prompt {
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Ctrl+P/N: History ",
+            Style::default().fg(Color::Cyan),
+        ));
+    }
+    help_spans.push(Span::raw(" | "));
+    help_spans.push(Span::styled(" Ctrl+C/q: Quit ", Style::default().fg(Color::Red)));
+    let help = Line::from(help_spans);
     let help_bar = Paragraph::new(help).block(Block::default().borders(Borders::TOP));
     frame.render_widget(help_bar, chunks[5]);
 
