@@ -61,8 +61,11 @@ pub struct App {
 
     // Setup state
     pub prompt_input: String,
+    pub prompt_cursor: usize,
     pub verifier_name_input: String,
+    pub verifier_name_cursor: usize,
     pub verifier_prompt_input: String,
+    pub verifier_prompt_cursor: usize,
     pub verifiers: Vec<Verifier>,
     pub setup_focus: SetupFocus,
     pub selected_verifier: usize,
@@ -96,8 +99,11 @@ impl App {
         Self {
             screen: Screen::Setup,
             prompt_input: String::new(),
+            prompt_cursor: 0,
             verifier_name_input: String::new(),
+            verifier_name_cursor: 0,
             verifier_prompt_input: String::new(),
+            verifier_prompt_cursor: 0,
             verifiers: Vec::new(),
             setup_focus: SetupFocus::Prompt,
             selected_verifier: 0,
@@ -160,8 +166,11 @@ impl App {
     pub fn edit_and_rerun(&mut self) {
         self.screen = Screen::Setup;
         self.setup_focus = SetupFocus::Prompt;
+        self.prompt_cursor = self.prompt_input.len();
         self.verifier_name_input.clear();
+        self.verifier_name_cursor = 0;
         self.verifier_prompt_input.clear();
+        self.verifier_prompt_cursor = 0;
         self.history_index = None;
         self.history_draft.clear();
         self.verifier_statuses.clear();
@@ -177,8 +186,11 @@ impl App {
     pub fn reset_for_new_run(&mut self) {
         self.screen = Screen::Setup;
         self.prompt_input.clear();
+        self.prompt_cursor = 0;
         self.verifier_name_input.clear();
+        self.verifier_name_cursor = 0;
         self.verifier_prompt_input.clear();
+        self.verifier_prompt_cursor = 0;
         self.setup_focus = SetupFocus::Prompt;
         self.history_index = None;
         self.history_draft.clear();

@@ -314,7 +314,8 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         SetupFocus::Prompt => {
             let iw = chunks[1].width.saturating_sub(2);
             if iw > 0 {
-                let (x_off, y_off) = cursor_pos_wrapped(&app.prompt_input, iw);
+                let cursor = app.prompt_cursor.min(app.prompt_input.len());
+                let (x_off, y_off) = cursor_pos_wrapped(&app.prompt_input[..cursor], iw);
                 let x = chunks[1].x + 1 + x_off;
                 let y = chunks[1].y + 1 + y_off;
                 frame.set_cursor_position((x, y));
@@ -323,7 +324,8 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         SetupFocus::VerifierName => {
             let iw = chunks[2].width.saturating_sub(2);
             if iw > 0 {
-                let (x_off, y_off) = cursor_pos_wrapped(&app.verifier_name_input, iw);
+                let cursor = app.verifier_name_cursor.min(app.verifier_name_input.len());
+                let (x_off, y_off) = cursor_pos_wrapped(&app.verifier_name_input[..cursor], iw);
                 let x = chunks[2].x + 1 + x_off;
                 let y = chunks[2].y + 1 + y_off;
                 frame.set_cursor_position((x, y));
@@ -332,7 +334,8 @@ fn draw_setup(frame: &mut Frame, app: &App) {
         SetupFocus::VerifierPrompt => {
             let iw = chunks[3].width.saturating_sub(2);
             if iw > 0 {
-                let (x_off, y_off) = cursor_pos_wrapped(&app.verifier_prompt_input, iw);
+                let cursor = app.verifier_prompt_cursor.min(app.verifier_prompt_input.len());
+                let (x_off, y_off) = cursor_pos_wrapped(&app.verifier_prompt_input[..cursor], iw);
                 let x = chunks[3].x + 1 + x_off;
                 let y = chunks[3].y + 1 + y_off;
                 frame.set_cursor_position((x, y));

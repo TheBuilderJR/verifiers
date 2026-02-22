@@ -164,6 +164,7 @@ async fn run_app(
                                 };
                                 app.history_index = Some(new_index);
                                 app.prompt_input = app.prompt_history[new_index].clone();
+                                app.prompt_cursor = app.prompt_input.len();
                             }
                             // Ctrl+N: next prompt in history
                             (KeyCode::Char('n'), KeyModifiers::CONTROL)
@@ -179,18 +180,74 @@ async fn run_app(
                                     app.history_index = None;
                                     app.prompt_input = app.history_draft.clone();
                                 }
+                                app.prompt_cursor = app.prompt_input.len();
+                            }
+                            // Left/Right arrows for cursor movement in text fields
+                            (KeyCode::Left, _) if app.setup_focus != SetupFocus::VerifierList => {
+                                let (text, cursor) = match app.setup_focus {
+                                    SetupFocus::Prompt => (&app.prompt_input, &mut app.prompt_cursor),
+                                    SetupFocus::VerifierName => (&app.verifier_name_input, &mut app.verifier_name_cursor),
+                                    SetupFocus::VerifierPrompt => (&app.verifier_prompt_input, &mut app.verifier_prompt_cursor),
+                                    SetupFocus::VerifierList => unreachable!(),
+                                };
+                                if *cursor > 0 {
+                                    *cursor = text[..*cursor]
+                                        .char_indices()
+                                        .last()
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(0);
+                                }
+                            }
+                            (KeyCode::Right, _) if app.setup_focus != SetupFocus::VerifierList => {
+                                let (text, cursor) = match app.setup_focus {
+                                    SetupFocus::Prompt => (&app.prompt_input, &mut app.prompt_cursor),
+                                    SetupFocus::VerifierName => (&app.verifier_name_input, &mut app.verifier_name_cursor),
+                                    SetupFocus::VerifierPrompt => (&app.verifier_prompt_input, &mut app.verifier_prompt_cursor),
+                                    SetupFocus::VerifierList => unreachable!(),
+                                };
+                                if *cursor < text.len() {
+                                    *cursor += text[*cursor..]
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.len_utf8())
+                                        .unwrap_or(0);
+                                }
                             }
                             // Backspace (text fields only; VerifierList handled above)
                             (KeyCode::Backspace, _) => match app.setup_focus {
                                 SetupFocus::Prompt => {
-                                    app.prompt_input.pop();
+                                    if app.prompt_cursor > 0 {
+                                        let prev = app.prompt_input[..app.prompt_cursor]
+                                            .char_indices()
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        app.prompt_input.remove(prev);
+                                        app.prompt_cursor = prev;
+                                    }
                                     app.history_index = None;
                                 }
                                 SetupFocus::VerifierName => {
-                                    app.verifier_name_input.pop();
+                                    if app.verifier_name_cursor > 0 {
+                                        let prev = app.verifier_name_input[..app.verifier_name_cursor]
+                                            .char_indices()
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        app.verifier_name_input.remove(prev);
+                                        app.verifier_name_cursor = prev;
+                                    }
                                 }
                                 SetupFocus::VerifierPrompt => {
-                                    app.verifier_prompt_input.pop();
+                                    if app.verifier_prompt_cursor > 0 {
+                                        let prev = app.verifier_prompt_input[..app.verifier_prompt_cursor]
+                                            .char_indices()
+                                            .last()
+                                            .map(|(i, _)| i)
+                                            .unwrap_or(0);
+                                        app.verifier_prompt_input.remove(prev);
+                                        app.verifier_prompt_cursor = prev;
+                                    }
                                 }
                                 SetupFocus::VerifierList => {}
                             },
@@ -198,19 +255,25 @@ async fn run_app(
                             (KeyCode::Char(c), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                                 match app.setup_focus {
                                     SetupFocus::Prompt => {
-                                        app.prompt_input.push(c);
+                                        app.prompt_input.insert(app.prompt_cursor, c);
+                                        app.prompt_cursor += c.len_utf8();
                                         app.history_index = None;
                                     }
-                                    SetupFocus::VerifierName => app.verifier_name_input.push(c),
+                                    SetupFocus::VerifierName => {
+                                        app.verifier_name_input.insert(app.verifier_name_cursor, c);
+                                        app.verifier_name_cursor += c.len_utf8();
+                                    }
                                     SetupFocus::VerifierPrompt => {
-                                        app.verifier_prompt_input.push(c)
+                                        app.verifier_prompt_input.insert(app.verifier_prompt_cursor, c);
+                                        app.verifier_prompt_cursor += c.len_utf8();
                                     }
                                     SetupFocus::VerifierList => {}
                                 }
                             }
                             // Enter for newline in prompt field
                             (KeyCode::Enter, _) if app.setup_focus == SetupFocus::Prompt => {
-                                app.prompt_input.push('\n');
+                                app.prompt_input.insert(app.prompt_cursor, '\n');
+                                app.prompt_cursor += 1;
                                 app.history_index = None;
                             }
                             _ => {}
