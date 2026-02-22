@@ -1,7 +1,9 @@
 use crate::file_manager::FileManager;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// A verifier definition: a name and a prompt that tells Claude how to verify.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Verifier {
     pub name: String,
     pub prompt: String,
@@ -126,6 +128,22 @@ impl App {
             .collect();
     }
 
+    pub fn reset_for_new_run(&mut self) {
+        self.screen = Screen::Setup;
+        self.prompt_input.clear();
+        self.verifier_name_input.clear();
+        self.verifier_prompt_input.clear();
+        self.setup_focus = SetupFocus::Prompt;
+        self.verifier_statuses.clear();
+        self.logs.clear();
+        self.file_contents.clear();
+        self.iteration = 0;
+        self.file_manager = None;
+        self.log_scroll = 0;
+        self.file_scroll = 0;
+        self.scroll_focus = ScrollFocus::Log;
+    }
+
     pub fn handle_runner_message(&mut self, msg: RunnerMessage) {
         match msg {
             RunnerMessage::Log(text) => {
@@ -164,4 +182,29 @@ impl App {
             }
         }
     }
+}
+
+fn verifiers_path() -> PathBuf {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("verifiers");
+    config_dir.join("verifiers.json")
+}
+
+pub fn save_verifiers(verifiers: &[Verifier]) {
+    let path = verifiers_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(verifiers) {
+        let _ = std::fs::write(&path, json);
+    }
+}
+
+pub fn load_verifiers() -> Vec<Verifier> {
+    let path = verifiers_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default()
 }

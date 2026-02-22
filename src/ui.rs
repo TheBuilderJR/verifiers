@@ -121,10 +121,26 @@ fn draw_setup(frame: &mut Frame, app: &App) {
     // Show cursor in the focused input
     match app.setup_focus {
         SetupFocus::Prompt => {
-            // Position cursor at end of prompt input
-            let x = chunks[1].x + 1 + (app.prompt_input.len() as u16 % (chunks[1].width.saturating_sub(2)));
-            let y = chunks[1].y + 1 + (app.prompt_input.len() as u16 / (chunks[1].width.saturating_sub(2)));
-            frame.set_cursor_position((x, y));
+            // Position cursor at end of prompt input, accounting for newlines and wrapping
+            let inner_width = chunks[1].width.saturating_sub(2) as usize;
+            if inner_width > 0 {
+                let lines: Vec<&str> = app.prompt_input.split('\n').collect();
+                let mut y_offset: usize = 0;
+
+                // Count rows from all lines except the last
+                for line in &lines[..lines.len().saturating_sub(1)] {
+                    y_offset += (line.len() / inner_width) + 1;
+                }
+
+                // Position within the last line
+                let last_line_len = lines.last().map_or(0, |l| l.len());
+                y_offset += last_line_len / inner_width;
+                let x_offset = last_line_len % inner_width;
+
+                let x = chunks[1].x + 1 + x_offset as u16;
+                let y = chunks[1].y + 1 + y_offset as u16;
+                frame.set_cursor_position((x, y));
+            }
         }
         SetupFocus::VerifierName => {
             let x = chunks[2].x + 1 + app.verifier_name_input.len() as u16;
@@ -271,7 +287,7 @@ fn draw_running(frame: &mut Frame, app: &App) {
     frame.render_widget(file_para, chunks[3]);
 
     // Help bar
-    let help = Line::from(vec![
+    let mut help_spans = vec![
         Span::styled(" q: Quit ", Style::default().fg(Color::Red)),
         Span::raw(" | "),
         Span::styled(" Tab: Switch focus ", Style::default().fg(Color::Cyan)),
@@ -280,7 +296,15 @@ fn draw_running(frame: &mut Frame, app: &App) {
             " Up/Down: Scroll ",
             Style::default().fg(Color::Cyan),
         ),
-    ]);
+    ];
+    if app.screen == Screen::Done {
+        help_spans.push(Span::raw(" | "));
+        help_spans.push(Span::styled(
+            " Ctrl+N: New prompt ",
+            Style::default().fg(Color::Green),
+        ));
+    }
+    let help = Line::from(help_spans);
     let help_bar = Paragraph::new(help);
     frame.render_widget(help_bar, chunks[4]);
 }

@@ -3,7 +3,7 @@ mod file_manager;
 mod runner;
 mod ui;
 
-use app::{App, Screen, ScrollFocus, SetupFocus};
+use app::{App, Screen, ScrollFocus, SetupFocus, load_verifiers, save_verifiers};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -45,6 +45,7 @@ async fn run_app(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut app = App::new();
+    app.verifiers = load_verifiers();
     let mut rx: Option<mpsc::UnboundedReceiver<app::RunnerMessage>> = None;
 
     loop {
@@ -85,6 +86,7 @@ async fn run_app(
                             // Ctrl+S: start
                             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
                                 if app.can_start() {
+                                    save_verifiers(&app.verifiers);
                                     // Create the shared file
                                     let verifier_names: Vec<String> =
                                         app.verifiers.iter().map(|v| v.name.clone()).collect();
@@ -138,17 +140,23 @@ async fn run_app(
                         }
                     }
                     Screen::Running | Screen::Done => {
-                        match key.code {
-                            KeyCode::Char('q') => {
+                        match (key.code, key.modifiers) {
+                            (KeyCode::Char('q'), _) => {
                                 app.should_quit = true;
                             }
-                            KeyCode::Tab | KeyCode::BackTab => {
+                            (KeyCode::Char('n'), KeyModifiers::CONTROL)
+                                if app.screen == Screen::Done =>
+                            {
+                                app.reset_for_new_run();
+                                rx = None;
+                            }
+                            (KeyCode::Tab | KeyCode::BackTab, _) => {
                                 app.scroll_focus = match app.scroll_focus {
                                     ScrollFocus::Log => ScrollFocus::File,
                                     ScrollFocus::File => ScrollFocus::Log,
                                 };
                             }
-                            KeyCode::Up => match app.scroll_focus {
+                            (KeyCode::Up, _) => match app.scroll_focus {
                                 ScrollFocus::Log => {
                                     app.log_scroll = app.log_scroll.saturating_sub(1);
                                 }
@@ -156,7 +164,7 @@ async fn run_app(
                                     app.file_scroll = app.file_scroll.saturating_sub(1);
                                 }
                             },
-                            KeyCode::Down => match app.scroll_focus {
+                            (KeyCode::Down, _) => match app.scroll_focus {
                                 ScrollFocus::Log => {
                                     app.log_scroll = app.log_scroll.saturating_add(1);
                                 }
